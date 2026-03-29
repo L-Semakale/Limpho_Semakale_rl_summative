@@ -18,9 +18,7 @@ env/
 *.pt
 *.pth
 
-# Logs & results (generated at runtime)
-logs/
-results/
+
 
 # Jupyter
 .ipynb_checkpoints/
