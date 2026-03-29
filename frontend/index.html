@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lesotho Telemedicine — RL Agent Dashboard</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg:       #0d1117;
+    --panel:    #161b22;
+    --border:   #30363d;
+    --text:     #e6edf3;
+    --muted:    #7d8590;
+    --accent:   #58a6ff;
+    --green:    #3fb950;
+    --yellow:   #d29922;
+    --red:      #f85149;
+    --purple:   #bc8cff;
+    --radius:   10px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+  }
+
+  header {
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  header h1 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 0.3px;
+  }
+
+  header p { color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+  #status-dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--red); display: inline-block;
+    margin-right: 6px; transition: background 0.3s;
+  }
+  #status-dot.connected { background: var(--green); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-rows: auto auto;
+    gap: 16px;
+    padding: 20px 28px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px;
+  }
+
+  .panel-title {
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* Map panel spans 2 cols */
+  .panel-map { grid-column: 1 / 3; }
+
+  /* Metrics */
+  .metrics-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    grid-column: 1 / 4;
+  }
+
+  .metric-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    text-align: center;
+  }
+
+  .metric-val {
+    font-size: 28px;
+    font-weight: 600;
+    font-family: 'IBM Plex Mono', monospace;
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+
+  .metric-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; }
+
+  /* Map SVG */
+  #map-svg { width: 100%; height: 340px; }
+
+  /* District nodes */
+  .district-node { cursor: pointer; transition: opacity 0.2s; }
+  .district-node:hover { opacity: 0.8; }
+
+  /* Patient queue */
+  .patient-list { max-height: 280px; overflow-y: auto; }
+  .patient-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .patient-item:last-child { border-bottom: none; }
+
+  .sev-dot {
+    width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+  }
+  .sev-low      { background: var(--green); }
+  .sev-medium   { background: var(--yellow); }
+  .sev-critical { background: var(--red); }
+
+  /* Resource bars */
+  .resource-bar { margin-bottom: 14px; }
+  .resource-bar label { display: flex; justify-content: space-between; margin-bottom: 5px; color: var(--muted); font-size: 12px; }
+  .bar-track { height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+  .bar-fill  { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
+
+  /* Action log */
+  .log-list { max-height: 240px; overflow-y: auto; font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+  .log-item { padding: 5px 0; border-bottom: 1px solid var(--border); color: var(--muted); }
+  .log-item span { color: var(--text); }
+  .log-reward-pos { color: var(--green); }
+  .log-reward-neg { color: var(--red); }
+
+  /* Controls */
+  .controls {
+    display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap;
+  }
+
+  button {
+    background: var(--accent);
+    color: #0d1117;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  button:hover { opacity: 0.85; }
+  button.secondary {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  button.danger { background: var(--red); color: #fff; }
+
+  /* Fairness gauge */
+  .fairness-gauge { text-align: center; padding: 10px 0; }
+  .gauge-val { font-size: 42px; font-weight: 600; font-family: 'IBM Plex Mono', monospace; }
+  .gauge-label { color: var(--muted); font-size: 12px; margin-top: 4px; }
+
+  /* Weather badge */
+  .weather-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 500;
+    background: var(--border);
+    color: var(--muted);
+  }
+  .weather-badge.warning { background: rgba(210,153,34,0.2); color: var(--yellow); }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .api-url {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    padding: 6px 10px;
+    background: var(--bg);
+    border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>🏥 Lesotho Telemedicine — RL Agent Dashboard</h1>
+    <p>AI-driven healthcare resource allocation across 10 districts</p>
+  </div>
+  <div style="text-align:right">
+    <div style="margin-bottom:6px">
+      <span id="status-dot"></span>
+      <span id="status-text" style="font-size:12px;color:var(--muted)">Connecting to API...</span>
+    </div>
+    <span class="api-url" id="api-url">http://localhost:5000/api</span>
+  </div>
+</header>
+
+<!-- Metric cards -->
+<div style="padding:20px 28px 0; max-width:1400px; margin:0 auto;">
+  <div class="controls">
+    <button onclick="resetEpisode()">↺ Reset Episode</button>
+    <button onclick="stepOnce()" class="secondary">▶ Step</button>
+    <button onclick="toggleAuto()" class="secondary" id="auto-btn">⚡ Auto-Run</button>
+    <button onclick="runFullEpisode()" class="secondary">⏭ Full Episode</button>
+    <span id="algo-badge" style="padding:8px 14px;background:rgba(88,166,255,0.1);border:1px solid var(--accent);border-radius:6px;font-size:12px;color:var(--accent)">Algorithm: —</span>
+    <span id="episode-badge" style="padding:8px 14px;background:var(--panel);border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--muted)">Episode: —</span>
+  </div>
+
+  <div class="metrics-row" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;">
+    <div class="metric-card">
+      <div class="metric-val" id="m-reward" style="color:var(--accent)">—</div>
+      <div class="metric-label">Episode Reward</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-val" id="m-treated" style="color:var(--green)">—</div>
+      <div class="metric-label">Patients Treated</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-val" id="m-critical" style="color:var(--red)">—</div>
+      <div class="metric-label">Untreated Critical</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-val" id="m-step" style="color:var(--purple)">—</div>
+      <div class="metric-label">Step / 200</div>
+    </div>
+  </div>
+</div>
+
+<!-- Main grid -->
+<div class="grid">
+
+  <!-- Map panel -->
+  <div class="panel panel-map">
+    <div class="panel-title">District Map — Lesotho</div>
+    <svg id="map-svg" viewBox="0 0 560 340">
+      <!-- Roads drawn by JS -->
+      <g id="roads"></g>
+      <!-- District nodes drawn by JS -->
+      <g id="nodes"></g>
+    </svg>
+  </div>
+
+  <!-- Right column: resources + fairness -->
+  <div>
+    <div class="panel" style="margin-bottom:16px">
+      <div class="panel-title">Resources</div>
+      <div class="resource-bar">
+        <label><span>Mobile Clinics</span><span id="r-mobile">—</span></label>
+        <div class="bar-track"><div class="bar-fill" id="rb-mobile" style="background:var(--accent);width:100%"></div></div>
+      </div>
+      <div class="resource-bar">
+        <label><span>Tele-Slots</span><span id="r-tele">—</span></label>
+        <div class="bar-track"><div class="bar-fill" id="rb-tele" style="background:var(--purple);width:100%"></div></div>
+      </div>
+      <div class="resource-bar">
+        <label><span>Airlift Budget</span><span id="r-airlift">—</span></label>
+        <div class="bar-track"><div class="bar-fill" id="rb-airlift" style="background:var(--red);width:100%"></div></div>
+      </div>
+      <div style="margin-top:12px">
+        <span class="weather-badge" id="weather-badge">Weather: Clear ✓</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Fairness Score</div>
+      <div class="fairness-gauge">
+        <div class="gauge-val" id="fairness-val" style="color:var(--green)">—</div>
+        <div class="gauge-label">Equity index (1.0 = perfectly fair)</div>
+      </div>
+      <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:8px;text-align:center">
+        <div style="background:var(--bg);border-radius:6px;padding:10px">
+          <div style="font-size:20px;font-weight:600;color:var(--accent);font-family:monospace" id="treat-urban">—</div>
+          <div style="color:var(--muted);font-size:11px">Urban treated</div>
+        </div>
+        <div style="background:var(--bg);border-radius:6px;padding:10px">
+          <div style="font-size:20px;font-weight:600;color:var(--purple);font-family:monospace" id="treat-rural">—</div>
+          <div style="color:var(--muted);font-size:11px">Rural treated</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Patient queue -->
+  <div class="panel">
+    <div class="panel-title">Patient Queue (<span id="queue-size">0</span>)</div>
+    <div class="patient-list" id="patient-list">
+      <div style="color:var(--muted);text-align:center;padding:20px">No patients</div>
+    </div>
+  </div>
+
+  <!-- Action log -->
+  <div class="panel" style="grid-column: 2 / 4">
+    <div class="panel-title">Action Log</div>
+    <div class="log-list" id="action-log">
+      <div style="color:var(--muted);padding:10px 0">Waiting for first step...</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const API = 'http://localhost:5000/api';
+let autoRunInterval = null;
+let autoRunning = false;
+
+// District layout (relative positions matching custom_env.py)
+const DISTRICTS = [
+  {name:"Maseru",        rural:false, x:0.45, y:0.55},
+  {name:"Leribe",        rural:false, x:0.35, y:0.25},
+  {name:"Berea",         rural:false, x:0.50, y:0.38},
+  {name:"Mafeteng",      rural:true,  x:0.38, y:0.70},
+  {name:"Mohale's Hoek", rural:true,  x:0.30, y:0.82},
+  {name:"Quthing",       rural:true,  x:0.38, y:0.92},
+  {name:"Qacha's Nek",   rural:true,  x:0.62, y:0.88},
+  {name:"Mokhotlong",    rural:true,  x:0.72, y:0.30},
+  {name:"Thaba-Tseka",   rural:true,  x:0.62, y:0.50},
+  {name:"Butha-Buthe",   rural:true,  x:0.45, y:0.15},
+];
+
+const ROADS = [
+  [0,1],[0,2],[0,3],[1,2],[1,9],[2,8],
+  [3,4],[4,5],[5,6],[6,8],[7,8],[7,9],[2,3],[8,9]
+];
+
+const MAP_W = 560, MAP_H = 340;
+function px(d) { return {x: d.x * MAP_W, y: d.y * MAP_H}; }
+
+// Draw static roads
+function initMap() {
+  const roads = document.getElementById('roads');
+  ROADS.forEach(([a,b]) => {
+    const pa = px(DISTRICTS[a]), pb = px(DISTRICTS[b]);
+    const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('x1', pa.x); line.setAttribute('y1', pa.y);
+    line.setAttribute('x2', pb.x); line.setAttribute('y2', pb.y);
+    line.setAttribute('stroke', '#30363d'); line.setAttribute('stroke-width', '1.5');
+    line.setAttribute('id', `road-${a}-${b}`);
+    roads.appendChild(line);
+  });
+}
+
+function updateMap(state) {
+  const nodesG  = document.getElementById('nodes');
+  nodesG.innerHTML = '';
+
+  const blocked  = new Set(state.weather.blocked_districts);
+  const patients = {};
+  state.districts.forEach(d => { patients[d.id] = d.patients || []; });
+
+  // Update road colors
+  ROADS.forEach(([a,b]) => {
+    const line = document.getElementById(`road-${a}-${b}`);
+    if (!line) return;
+    const isBlocked = blocked.has(a) || blocked.has(b);
+    line.setAttribute('stroke', isBlocked ? '#f85149' : '#30363d');
+    line.setAttribute('stroke-width', isBlocked ? '2.5' : '1.5');
+  });
+
+  DISTRICTS.forEach((d, i) => {
+    const p  = px(d);
+    const ps = patients[i] || [];
+    const g  = document.createElementNS('http://www.w3.org/2000/svg','g');
+    g.setAttribute('class','district-node');
+    g.setAttribute('title', d.name);
+
+    // Ring color
+    const ringColor = d.rural ? '#bc8cff' : '#58a6ff';
+
+    // Outer blocked ring
+    if (blocked.has(i)) {
+      const br = document.createElementNS('http://www.w3.org/2000/svg','circle');
+      br.setAttribute('cx', p.x); br.setAttribute('cy', p.y); br.setAttribute('r', 22);
+      br.setAttribute('fill','none'); br.setAttribute('stroke','#f85149');
+      br.setAttribute('stroke-width','2.5'); br.setAttribute('stroke-dasharray','4 2');
+      g.appendChild(br);
+    }
+
+    // Main node
+    const circle = document.createElementNS('http://www.w3.org/2000/svg','circle');
+    circle.setAttribute('cx', p.x); circle.setAttribute('cy', p.y);
+    circle.setAttribute('r', 18);
+    circle.setAttribute('fill', '#161b22');
+    circle.setAttribute('stroke', ringColor);
+    circle.setAttribute('stroke-width', '2');
+    g.appendChild(circle);
+
+    // Patient severity dots
+    ps.slice(0,6).forEach((pt, k) => {
+      const angle = (2 * Math.PI * k / Math.max(ps.length,1)) - Math.PI/2;
+      const dx = Math.cos(angle) * 26, dy = Math.sin(angle) * 26;
+      const dot = document.createElementNS('http://www.w3.org/2000/svg','circle');
+      dot.setAttribute('cx', p.x + dx); dot.setAttribute('cy', p.y + dy);
+      dot.setAttribute('r', 4);
+      const colors = {low:'#3fb950', medium:'#d29922', critical:'#f85149'};
+      dot.setAttribute('fill', colors[pt.severity_label] || '#7d8590');
+      g.appendChild(dot);
+    });
+
+    // Label
+    const txt = document.createElementNS('http://www.w3.org/2000/svg','text');
+    txt.setAttribute('x', p.x); txt.setAttribute('y', p.y + 32);
+    txt.setAttribute('text-anchor','middle');
+    txt.setAttribute('fill','#7d8590');
+    txt.setAttribute('font-size','9');
+    txt.setAttribute('font-family','IBM Plex Sans, sans-serif');
+    txt.textContent = d.name.split("'")[0].slice(0,8);
+    g.appendChild(txt);
+
+    // Mobile en-route badge
+    if (state.districts[i] && state.districts[i].mobile_en_route) {
+      const badge = document.createElementNS('http://www.w3.org/2000/svg','circle');
+      badge.setAttribute('cx', p.x - 14); badge.setAttribute('cy', p.y - 14);
+      badge.setAttribute('r', 7); badge.setAttribute('fill','#58a6ff');
+      g.appendChild(badge);
+      const btxt = document.createElementNS('http://www.w3.org/2000/svg','text');
+      btxt.setAttribute('x', p.x - 14); btxt.setAttribute('y', p.y - 10);
+      btxt.setAttribute('text-anchor','middle'); btxt.setAttribute('fill','#0d1117');
+      btxt.setAttribute('font-size','7'); btxt.setAttribute('font-weight','600');
+      btxt.textContent = 'M';
+      g.appendChild(btxt);
+    }
+
+    nodesG.appendChild(g);
+  });
+}
+
+function updateMetrics(state) {
+  const m = state.metrics, r = state.resources;
+
+  document.getElementById('m-reward').textContent  = m.episode_reward.toFixed(1);
+  document.getElementById('m-treated').textContent = m.treated_total;
+  document.getElementById('m-critical').textContent = state.queue.critical_count;
+  document.getElementById('m-step').textContent    = `${state.step}/200`;
+
+  // Resources
+  const mob = r.mobile_clinics;
+  document.getElementById('r-mobile').textContent = `${mob.available}/${mob.total}`;
+  document.getElementById('rb-mobile').style.width = `${(mob.available/mob.total)*100}%`;
+
+  const tel = r.tele_slots;
+  document.getElementById('r-tele').textContent = `${tel.available}/${tel.total}`;
+  document.getElementById('rb-tele').style.width = `${(tel.available/tel.total)*100}%`;
+
+  const air = r.airlift_budget;
+  document.getElementById('r-airlift').textContent = `${air.available}/${air.total}`;
+  document.getElementById('rb-airlift').style.width = `${(air.available/air.total)*100}%`;
+
+  // Weather
+  const wb = document.getElementById('weather-badge');
+  if (state.weather.severity > 0) {
+    wb.textContent = `⚠ Weather: ${state.weather.blocked_districts.length} district(s) blocked`;
+    wb.className = 'weather-badge warning';
+  } else {
+    wb.textContent = 'Weather: Clear ✓';
+    wb.className = 'weather-badge';
+  }
+
+  // Fairness
+  const fs = m.fairness_score;
+  const fv = document.getElementById('fairness-val');
+  fv.textContent = fs.toFixed(3);
+  fv.style.color = fs > 0.7 ? 'var(--green)' : fs > 0.4 ? 'var(--yellow)' : 'var(--red)';
+  document.getElementById('treat-urban').textContent = m.treated_urban;
+  document.getElementById('treat-rural').textContent = m.treated_rural;
+
+  // Episode / algo
+  document.getElementById('algo-badge').textContent = `Algorithm: ${state.agent.algorithm.toUpperCase()}`;
+  document.getElementById('episode-badge').textContent = `Episode: ${state.episode}`;
+}
+
+function updateQueue(state) {
+  const list = document.getElementById('patient-list');
+  const ps   = state.queue.patients;
+  document.getElementById('queue-size').textContent = ps.length;
+
+  if (ps.length === 0) {
+    list.innerHTML = '<div style="color:var(--muted);text-align:center;padding:20px">Queue empty</div>';
+    return;
+  }
+
+  list.innerHTML = ps.slice(0,12).map(p => `
+    <div class="patient-item">
+      <div class="sev-dot sev-${p.severity_label}"></div>
+      <div style="flex:1">
+        <strong>${p.severity_label.toUpperCase()}</strong>
+        · ${p.district.name}
+        ${p.is_rural ? '<span style="color:var(--purple);font-size:11px">rural</span>' : '<span style="color:var(--accent);font-size:11px">urban</span>'}
+      </div>
+      <div style="color:var(--muted);font-size:11px">wait: ${p.wait_steps}s</div>
+      <div style="color:var(--muted);font-size:11px">conn: ${(p.connectivity*100).toFixed(0)}%</div>
+    </div>
+  `).join('');
+}
+
+function addLog(step, action, reward) {
+  const log  = document.getElementById('action-log');
+  const rCol = reward >= 0 ? 'log-reward-pos' : 'log-reward-neg';
+  const sign  = reward >= 0 ? '+' : '';
+  const item  = document.createElement('div');
+  item.className = 'log-item';
+  item.innerHTML = `<span style="color:var(--muted)">[${String(step).padStart(3,'0')}]</span> <span>${action.label}</span> <span class="${rCol}">${sign}${reward.toFixed(1)}</span>`;
+  log.prepend(item);
+  if (log.children.length > 60) log.lastChild.remove();
+}
+
+async function fetchState() {
+  try {
+    const res = await fetch(`${API}/state`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch { return null; }
+}
+
+async function resetEpisode() {
+  const res  = await fetch(`${API}/reset`, {method:'POST'});
+  const data = await res.json();
+  document.getElementById('action-log').innerHTML = '<div style="color:var(--muted);padding:10px 0">Episode reset.</div>';
+  renderState(data.state);
+}
+
+async function stepOnce() {
+  const res  = await fetch(`${API}/step`, {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+  const data = await res.json();
+  renderState(data.state);
+  addLog(data.state.step, data.action, data.reward);
+  if (data.state.done) {
+    stopAuto();
+    document.getElementById('action-log').prepend(
+      Object.assign(document.createElement('div'), {
+        className:'log-item',
+        innerHTML:`<span style="color:var(--yellow)">⚑ Episode complete. Total reward: ${data.state.metrics.episode_reward.toFixed(1)}</span>`
+      })
+    );
+  }
+}
+
+async function runFullEpisode() {
+  const res  = await fetch(`${API}/autorun`, {method:'POST'});
+  const data = await res.json();
+  const state = await fetchState();
+  if (state) renderState(state);
+  document.getElementById('action-log').innerHTML =
+    `<div class="log-item" style="color:var(--yellow)">⚑ Full episode: ${data.steps} steps | reward: ${data.total_reward.toFixed(1)} | fairness: ${data.fairness_score.toFixed(3)}</div>` +
+    data.trajectory.slice(-20).reverse().map(t =>
+      `<div class="log-item"><span style="color:var(--muted)">[${String(t.step).padStart(3,'0')}]</span> <span>${t.action}</span> <span class="${t.reward>=0?'log-reward-pos':'log-reward-neg'}">${t.reward>=0?'+':''}${t.reward.toFixed(1)}</span></div>`
+    ).join('');
+}
+
+function toggleAuto() {
+  if (autoRunning) stopAuto();
+  else startAuto();
+}
+
+function startAuto() {
+  autoRunning = true;
+  document.getElementById('auto-btn').textContent = '⏸ Pause';
+  autoRunInterval = setInterval(stepOnce, 300);
+}
+
+function stopAuto() {
+  autoRunning = false;
+  document.getElementById('auto-btn').textContent = '⚡ Auto-Run';
+  clearInterval(autoRunInterval);
+}
+
+function renderState(state) {
+  updateMetrics(state);
+  updateQueue(state);
+  updateMap(state);
+}
+
+// Check API connection
+async function checkConnection() {
+  const dot  = document.getElementById('status-dot');
+  const text = document.getElementById('status-text');
+  try {
+    const res  = await fetch(`${API}/status`);
+    const data = await res.json();
+    dot.className  = 'connected';
+    text.textContent = `Connected · ${data.algorithm.toUpperCase()} agent`;
+    const state = await fetchState();
+    if (state) renderState(state);
+  } catch {
+    dot.className  = '';
+    text.textContent = 'API offline — run: python api/server.py';
+  }
+}
+
+initMap();
+checkConnection();
+setInterval(checkConnection, 5000);
+</script>
+</body>
+</html>
